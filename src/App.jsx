@@ -1,23 +1,18 @@
-// src/App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const STORAGE_KEY = "office_inventory_v1";
-
-function uid() {
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
+import { motion } from "framer-motion";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownUp,
+  Database,
+  Package2,
+  Plus,
+  Search,
+  Trash2,
+  RotateCcw,
+  Archive,
+} from "lucide-react";
+import { supabase } from "./lib/supabaseClient";
 
 function toNumber(value) {
   const n = Number(value);
@@ -28,153 +23,422 @@ function clampNonNegative(n) {
   return Math.max(0, n);
 }
 
-function loadState() {
+function formatDate(iso) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!Array.isArray(parsed.items) || !Array.isArray(parsed.txns)) return null;
-    return parsed;
+    return new Date(iso).toLocaleString();
   } catch {
-    return null;
+    return iso;
   }
 }
 
-function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function normalizeName(name) {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function digitsOnly(value) {
+  return value.replace(/[^\d]/g, "");
+}
+
+const UNIT_OPTIONS = [
+  "ream",
+  "pcs",
+  "box",
+  "pack",
+  "bottle",
+  "pad",
+  "set",
+  "roll",
+  "bundle",
+  "carton",
+  "others",
+];
+
+function FancyButton({ children, style, icon, ...props }) {
+  return (
+    <motion.button
+      whileHover={{ y: -2, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.18 }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        ...style,
+      }}
+      {...props}
+    >
+      {icon}
+      {children}
+    </motion.button>
+  );
 }
 
 const styles = {
   page: {
+    minHeight: "100vh",
     fontFamily:
       'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"',
-    padding: 16,
-    maxWidth: 1200,
+    background:
+      "radial-gradient(circle at top left, rgba(255,255,255,0.10), transparent 22%), linear-gradient(180deg, #0f3d1e 0%, #17612b 38%, #2f8f3a 100%)",
+    color: "#ffffff",
+    padding: 20,
+  },
+
+  shell: {
+    maxWidth: 1280,
     margin: "0 auto",
   },
+
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 30,
+    padding: "28px 28px 34px",
+    marginBottom: 18,
+    background:
+      "linear-gradient(135deg, rgba(7,28,14,0.42), rgba(255,255,255,0.04))",
+    border: "1px solid rgba(255,255,255,0.14)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+    backdropFilter: "blur(14px)",
+  },
+
+  heroGlow: {
+    position: "absolute",
+    right: -80,
+    top: -80,
+    width: 280,
+    height: 280,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.05)",
+    filter: "blur(24px)",
+    pointerEvents: "none",
+  },
+
+  heroTitle: {
+    margin: 0,
+    fontSize: "clamp(44px, 10vw, 118px)",
+    lineHeight: 0.88,
+    fontWeight: 900,
+    letterSpacing: "-0.06em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.92)",
+    position: "relative",
+    zIndex: 1,
+  },
+
+  heroMetaRow: {
+    marginTop: 18,
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
+    position: "relative",
+    zIndex: 1,
+  },
+
+  statsPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 14px",
+    borderRadius: 999,
+    background: "rgba(7, 28, 14, 0.26)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    backdropFilter: "blur(8px)",
+  },
+
   header: {
     display: "flex",
     gap: 12,
-    alignItems: "baseline",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     flexWrap: "wrap",
     marginBottom: 16,
   },
-  h1: { margin: 0, fontSize: 22 },
-  subtle: { color: "#555", fontSize: 13, marginTop: 4 },
+
+  h1: {
+    margin: 0,
+    fontSize: 28,
+    color: "#ffffff",
+    letterSpacing: "-0.03em",
+  },
+
+  subtle: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    marginTop: 6,
+  },
+
+  headerLeft: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+
+  headerTopRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  badge: {
+    display: "inline-block",
+    padding: "6px 12px",
+    borderRadius: 999,
+    fontSize: 12,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(7, 28, 14, 0.22)",
+    color: "#fff",
+    userSelect: "none",
+    backdropFilter: "blur(8px)",
+  },
+
+  badgeOk: {
+    border: "1px solid rgba(134,239,172,0.40)",
+    background: "rgba(22,163,74,0.20)",
+    color: "#f0fdf4",
+  },
+
+  badgeErr: {
+    border: "1px solid rgba(252,165,165,0.45)",
+    background: "rgba(220,38,38,0.20)",
+    color: "#fff1f2",
+  },
+
+  badgeChecking: {
+    border: "1px solid rgba(125,211,252,0.40)",
+    background: "rgba(2,132,199,0.20)",
+    color: "#f0f9ff",
+  },
+
   grid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 12,
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: 16,
     alignItems: "start",
   },
+
   card: {
-    border: "1px solid #ddd",
-    borderRadius: 12,
-    padding: 12,
-    boxShadow: "0 1px 8px rgba(0,0,0,0.03)",
-    background: "#fff",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 24,
+    padding: 18,
+    boxShadow: "0 20px 50px rgba(0,0,0,0.20)",
+    background: "rgba(8, 30, 15, 0.24)",
+    backdropFilter: "blur(14px)",
+    color: "#fff",
   },
-  cardTitle: { margin: "0 0 8px 0", fontSize: 16 },
-  row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  field: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 },
-  label: { fontSize: 12, color: "#333" },
+
+  cardFull: {
+    gridColumn: "1 / -1",
+  },
+
+  cardTitle: {
+    margin: "0 0 12px 0",
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#fff",
+    letterSpacing: "-0.02em",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  row: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+  },
+
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  label: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.82)",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+
   input: {
-    padding: "9px 10px",
-    borderRadius: 10,
-    border: "1px solid #ccc",
+    padding: "12px 14px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.18)",
     outline: "none",
+    background: "rgba(255,255,255,0.94)",
+    color: "#0f172a",
+    fontSize: 14,
   },
+
   select: {
-    padding: "9px 10px",
-    borderRadius: 10,
-    border: "1px solid #ccc",
+    padding: "12px 14px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.18)",
     outline: "none",
-    background: "#fff",
+    background: "rgba(255,255,255,0.94)",
+    color: "#0f172a",
+    fontSize: 14,
   },
-  buttonRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 },
+
+  buttonRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
+
   btn: {
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    background: "#f7f7f7",
+    padding: "11px 18px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(7, 28, 14, 0.28)",
+    color: "#fff",
     cursor: "pointer",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    transition: "all 0.2s ease",
+    backdropFilter: "blur(10px)",
   },
+
   btnPrimary: {
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: "1px solid #2b6cb0",
-    background: "#3182ce",
-    color: "#fff",
+    padding: "11px 18px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(180deg, #dff7cf 0%, #8fcd67 100%)",
+    color: "#12361c",
     cursor: "pointer",
+    fontWeight: 900,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
   },
+
   btnDanger: {
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: "1px solid #b91c1c",
-    background: "#dc2626",
+    padding: "11px 18px",
+    borderRadius: 999,
+    border: "1px solid rgba(254,202,202,0.34)",
+    background: "linear-gradient(180deg, #dc2626 0%, #991b1b 100%)",
     color: "#fff",
     cursor: "pointer",
+    fontWeight: 900,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
   },
-  tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse" },
+
+  btnWarning: {
+    padding: "11px 18px",
+    borderRadius: 999,
+    border: "1px solid rgba(253,224,71,0.34)",
+    background: "linear-gradient(180deg, #f59e0b 0%, #b45309 100%)",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 900,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
+  },
+
+  tableWrap: {
+    overflowX: "auto",
+    borderRadius: 18,
+    background: "rgba(6, 22, 11, 0.20)",
+    border: "1px solid rgba(255,255,255,0.08)",
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+
   th: {
     textAlign: "left",
     fontSize: 12,
-    color: "#444",
-    borderBottom: "1px solid #eee",
-    padding: "10px 8px",
+    color: "rgba(255,255,255,0.76)",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    padding: "12px 10px",
     whiteSpace: "nowrap",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
   },
-  td: { borderBottom: "1px solid #f0f0f0", padding: "10px 8px", fontSize: 13 },
-  badge: {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: 12,
-    border: "1px solid #ddd",
-    background: "#fafafa",
+
+  td: {
+    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    padding: "12px 10px",
+    fontSize: 13,
+    color: "#fff",
+    verticalAlign: "middle",
   },
+
   badgeLow: {
     display: "inline-block",
-    padding: "2px 8px",
+    padding: "4px 10px",
     borderRadius: 999,
     fontSize: 12,
-    border: "1px solid #fecaca",
-    background: "#fff1f2",
-    color: "#9f1239",
+    border: "1px solid rgba(254,202,202,0.42)",
+    background: "rgba(127,29,29,0.28)",
+    color: "#fff1f2",
   },
+
   error: {
-    background: "#fff1f2",
-    border: "1px solid #fecaca",
-    padding: 10,
-    borderRadius: 10,
-    color: "#9f1239",
-    marginBottom: 10,
+    background: "rgba(127,29,29,0.35)",
+    border: "1px solid rgba(252,165,165,0.30)",
+    padding: 12,
+    borderRadius: 16,
+    color: "#fff1f2",
+    marginBottom: 12,
     fontSize: 13,
+    backdropFilter: "blur(8px)",
   },
+
   ok: {
-    background: "#ecfdf5",
-    border: "1px solid #a7f3d0",
-    padding: 10,
-    borderRadius: 10,
-    color: "#065f46",
-    marginBottom: 10,
+    background: "rgba(6,95,70,0.30)",
+    border: "1px solid rgba(110,231,183,0.28)",
+    padding: 12,
+    borderRadius: 16,
+    color: "#ecfdf5",
+    marginBottom: 12,
     fontSize: 13,
+    backdropFilter: "blur(8px)",
   },
-  footer: { marginTop: 16, color: "#666", fontSize: 12 },
+
+  footer: {
+    marginTop: 16,
+    color: "rgba(255,255,255,0.74)",
+    fontSize: 12,
+  },
+
+  helperText: {
+    color: "rgba(255,255,255,0.76)",
+    fontSize: 13,
+    marginTop: 10,
+    lineHeight: 1.6,
+  },
 };
 
 export default function App() {
   const [items, setItems] = useState([]);
+  const [deletedItems, setDeletedItems] = useState([]);
   const [txns, setTxns] = useState([]);
 
   const [message, setMessage] = useState(null);
   const msgTimerRef = useRef(null);
+  const txnSectionRef = useRef(null);
 
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState("ream");
+  const [customUnit, setCustomUnit] = useState("");
   const [newQty, setNewQty] = useState("0");
   const [newMin, setNewMin] = useState("0");
 
@@ -184,33 +448,11 @@ export default function App() {
   const [txnNote, setTxnNote] = useState("");
 
   const [search, setSearch] = useState("");
+  const [txnSearch, setTxnSearch] = useState("");
+  const [binSearch, setBinSearch] = useState("");
 
-  useEffect(() => {
-    const loaded = loadState();
-    if (loaded) {
-      setItems(loaded.items);
-      setTxns(loaded.txns);
-      setSelectedItemId(loaded.items[0]?.id ?? "");
-    } else {
-      const seed = [
-        {
-          id: uid(),
-          name: "Bond Paper",
-          unit: "ream",
-          quantity: 100,
-          minLevel: 10,
-          updatedAt: nowIso(),
-        },
-      ];
-      setItems(seed);
-      setSelectedItemId(seed[0].id);
-      setTxns([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    saveState({ items, txns });
-  }, [items, txns]);
+  const [connStatus, setConnStatus] = useState("checking");
+  const [connError, setConnError] = useState("");
 
   function showMessage(type, text) {
     setMessage({ type, text });
@@ -218,134 +460,263 @@ export default function App() {
     msgTimerRef.current = setTimeout(() => setMessage(null), 3000);
   }
 
-  function normalizeName(name) {
-    return name.trim().replace(/\s+/g, " ");
+  function handleSelectItem(itemId) {
+    setSelectedItemId(itemId);
+    txnSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
-  function addItem(e) {
+  useEffect(() => {
+    async function checkConnection() {
+      setConnStatus("checking");
+      setConnError("");
+
+      const { error } = await supabase.from("items").select("id").limit(1);
+
+      if (error) {
+        console.error("Supabase connection error:", error);
+        setConnStatus("error");
+        setConnError(error.message);
+        return;
+      }
+
+      setConnStatus("ok");
+    }
+
+    checkConnection();
+  }, []);
+
+  async function refreshData(preferSelectedId) {
+    const { data: itemsData, error: itemsErr } = await supabase
+      .from("items")
+      .select("*")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false });
+
+    if (itemsErr) return showMessage("error", itemsErr.message);
+
+    const { data: deletedItemsData, error: deletedItemsErr } = await supabase
+      .from("items")
+      .select("*")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false });
+
+    if (deletedItemsErr) return showMessage("error", deletedItemsErr.message);
+
+    const { data: txnsData, error: txnsErr } = await supabase
+      .from("txns")
+      .select("*")
+      .is("deleted_at", null)
+      .order("at", { ascending: false });
+
+    if (txnsErr) return showMessage("error", txnsErr.message);
+
+    setItems(itemsData ?? []);
+    setDeletedItems(deletedItemsData ?? []);
+    setTxns(txnsData ?? []);
+
+    const nextSelected =
+      preferSelectedId && (itemsData ?? []).some((x) => x.id === preferSelectedId)
+        ? preferSelectedId
+        : itemsData?.[0]?.id ?? "";
+
+    setSelectedItemId(nextSelected);
+  }
+
+  useEffect(() => {
+    refreshData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function addItem(e) {
     e.preventDefault();
+
     const name = normalizeName(newName);
-    const unit = newUnit.trim() || "pcs";
+    const unit =
+      newUnit === "others"
+        ? normalizeName(customUnit || "pcs")
+        : newUnit.trim() || "pcs";
     const qty = toNumber(newQty);
     const minLevel = toNumber(newMin);
 
     if (!name) return showMessage("error", "Item name is required.");
-    if (!Number.isFinite(qty) || qty < 0)
+    if (newUnit === "others" && !normalizeName(customUnit)) {
+      return showMessage("error", "Please specify the unit.");
+    }
+    if (!Number.isFinite(qty) || qty < 0) {
       return showMessage("error", "Initial quantity must be 0 or more.");
-    if (!Number.isFinite(minLevel) || minLevel < 0)
+    }
+    if (!Number.isFinite(minLevel) || minLevel < 0) {
       return showMessage("error", "Min level must be 0 or more.");
+    }
 
-    const exists = items.some((it) => it.name.toLowerCase() === name.toLowerCase());
-    if (exists) return showMessage("error", "Item already exists. Use Stock In to add more.");
+    const { data: inserted, error } = await supabase
+      .from("items")
+      .insert({
+        name,
+        unit,
+        quantity: clampNonNegative(qty),
+        min_level: clampNonNegative(minLevel),
+        deleted_at: null,
+      })
+      .select("*")
+      .single();
 
-    const item = {
-      id: uid(),
-      name,
-      unit,
-      quantity: clampNonNegative(qty),
-      minLevel: clampNonNegative(minLevel),
-      updatedAt: nowIso(),
-    };
-
-    setItems((prev) => [item, ...prev]);
+    if (error) {
+      console.error("Insert error:", error);
+      return showMessage("error", error.message);
+    }
 
     if (qty > 0) {
-      const t = {
-        id: uid(),
+      const { error: txnErr } = await supabase.from("txns").insert({
         type: "IN",
-        itemId: item.id,
+        item_id: inserted.id,
         qty,
         note: "Initial stock",
-        at: nowIso(),
-      };
-      setTxns((prev) => [t, ...prev]);
+        deleted_at: null,
+      });
+
+      if (txnErr) {
+        console.error("Txn insert error:", txnErr);
+        return showMessage("error", txnErr.message);
+      }
     }
 
     setNewName("");
     setNewQty("0");
     setNewMin("0");
-    setSelectedItemId(item.id);
+    setNewUnit("ream");
+    setCustomUnit("");
+
+    await refreshData(inserted.id);
     showMessage("ok", `Added "${name}".`);
   }
 
-  function applyTxn(e) {
+  async function applyTxn(e) {
     e.preventDefault();
-    if (!selectedItemId) return showMessage("error", "Please select an item.");
-    const qty = toNumber(txnQty);
-    if (!Number.isFinite(qty) || qty <= 0)
-      return showMessage("error", "Quantity must be greater than 0.");
 
-    const item = items.find((it) => it.id === selectedItemId);
-    if (!item) return showMessage("error", "Selected item not found.");
+    if (!selectedItemId) return showMessage("error", "Please select an item.");
+
+    const qty = toNumber(txnQty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return showMessage("error", "Quantity must be greater than 0.");
+    }
 
     const note = txnNote.trim();
 
-    if (txnType === "OUT" && qty > item.quantity) {
-      return showMessage("error", `Not enough stock. Available: ${item.quantity} ${item.unit}.`);
+    const { error } = await supabase.rpc("apply_txn", {
+      p_item_id: selectedItemId,
+      p_type: txnType,
+      p_qty: qty,
+      p_note: note || null,
+    });
+
+    if (error) {
+      console.error("RPC error:", error);
+      return showMessage("error", error.message);
     }
-
-    const delta = txnType === "IN" ? qty : -qty;
-
-    setItems((prev) =>
-      prev.map((it) => {
-        if (it.id !== selectedItemId) return it;
-        return {
-          ...it,
-          quantity: clampNonNegative(it.quantity + delta),
-          updatedAt: nowIso(),
-        };
-      })
-    );
-
-    const t = {
-      id: uid(),
-      type: txnType,
-      itemId: selectedItemId,
-      qty,
-      note,
-      at: nowIso(),
-    };
-    setTxns((prev) => [t, ...prev]);
 
     setTxnQty("");
     setTxnNote("");
 
-    const verb = txnType === "IN" ? "Stock in" : "Released";
-    showMessage("ok", `${verb} ${qty} ${item.unit} for "${item.name}".`);
+    await refreshData(selectedItemId);
+    showMessage("ok", `${txnType === "IN" ? "Stock in" : "Released"} ${qty}.`);
   }
 
-  function deleteItem(itemId) {
+  async function deleteItem(itemId) {
     const item = items.find((it) => it.id === itemId);
     if (!item) return;
 
-    const yes = window.confirm(`Delete "${item.name}"?\nThis will also remove its transactions.`);
+    const yes = window.confirm(`Move "${item.name}" to Recycle Bin?`);
     if (!yes) return;
 
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
-    setTxns((prev) => prev.filter((t) => t.itemId !== itemId));
+    const deletedAt = new Date().toISOString();
 
-    if (selectedItemId === itemId) {
-      const next = items.find((it) => it.id !== itemId)?.id ?? "";
-      setSelectedItemId(next);
-    }
+    const { error: itemErr } = await supabase
+      .from("items")
+      .update({ deleted_at: deletedAt })
+      .eq("id", itemId);
 
-    showMessage("ok", `Deleted "${item.name}".`);
+    if (itemErr) return showMessage("error", itemErr.message);
+
+    const { error: txnErr } = await supabase
+      .from("txns")
+      .update({ deleted_at: deletedAt })
+      .eq("item_id", itemId);
+
+    if (txnErr) return showMessage("error", txnErr.message);
+
+    await refreshData();
+    showMessage("ok", `Moved "${item.name}" to Recycle Bin.`);
   }
 
-  function clearAll() {
-    const yes = window.confirm("Clear ALL items and transactions?");
+  async function restoreItem(itemId) {
+    const item = deletedItems.find((it) => it.id === itemId);
+    if (!item) return;
+
+    const { error: itemErr } = await supabase
+      .from("items")
+      .update({ deleted_at: null })
+      .eq("id", itemId);
+
+    if (itemErr) return showMessage("error", itemErr.message);
+
+    const { error: txnErr } = await supabase
+      .from("txns")
+      .update({ deleted_at: null })
+      .eq("item_id", itemId);
+
+    if (txnErr) return showMessage("error", txnErr.message);
+
+    await refreshData(itemId);
+    showMessage("ok", `Restored "${item.name}".`);
+  }
+
+  async function deleteForever(itemId) {
+    const item = deletedItems.find((it) => it.id === itemId);
+    if (!item) return;
+
+    const yes = window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`);
     if (!yes) return;
-    setItems([]);
-    setTxns([]);
+
+    const { error: txErr } = await supabase.from("txns").delete().eq("item_id", itemId);
+    if (txErr) return showMessage("error", txErr.message);
+
+    const { error: itErr } = await supabase.from("items").delete().eq("id", itemId);
+    if (itErr) return showMessage("error", itErr.message);
+
+    await refreshData();
+    showMessage("ok", `Permanently deleted "${item.name}".`);
+  }
+
+  async function clearAll() {
+    const yes = window.confirm("Move ALL items and transactions to Recycle Bin?");
+    if (!yes) return;
+
+    const deletedAt = new Date().toISOString();
+
+    const { error: txErr } = await supabase
+      .from("txns")
+      .update({ deleted_at: deletedAt })
+      .is("deleted_at", null);
+
+    if (txErr) return showMessage("error", txErr.message);
+
+    const { error: itErr } = await supabase
+      .from("items")
+      .update({ deleted_at: deletedAt })
+      .is("deleted_at", null);
+
+    if (itErr) return showMessage("error", itErr.message);
+
     setSelectedItemId("");
-    showMessage("ok", "Cleared everything.");
+    await refreshData();
+    showMessage("ok", "Moved everything to Recycle Bin.");
   }
 
-  const itemMap = useMemo(() => {
-    const m = new Map();
-    for (const it of items) m.set(it.id, it);
-    return m;
-  }, [items]);
+  const itemMap = useMemo(() => new Map(items.map((it) => [it.id, it])), [items]);
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -353,290 +724,568 @@ export default function App() {
     return items.filter((it) => it.name.toLowerCase().includes(q));
   }, [items, search]);
 
+  const filteredDeletedItems = useMemo(() => {
+    const q = binSearch.trim().toLowerCase();
+    if (!q) return deletedItems;
+    return deletedItems.filter((it) => it.name.toLowerCase().includes(q));
+  }, [deletedItems, binSearch]);
+
+  const filteredTxns = useMemo(() => {
+    const q = txnSearch.trim().toLowerCase();
+    if (!q) return txns;
+
+    return txns.filter((t) => {
+      const it = itemMap.get(t.item_id);
+      const itemName = it ? it.name.toLowerCase() : "";
+      const note = (t.note || "").toLowerCase();
+      const type = (t.type || "").toLowerCase();
+      const qty = String(t.qty ?? "").toLowerCase();
+      const date = formatDate(t.at).toLowerCase();
+
+      return (
+        itemName.includes(q) ||
+        note.includes(q) ||
+        type.includes(q) ||
+        qty.includes(q) ||
+        date.includes(q)
+      );
+    });
+  }, [txns, txnSearch, itemMap]);
+
   const lowCount = useMemo(() => {
-    return items.filter((it) => it.quantity <= it.minLevel && it.minLevel > 0).length;
+    return items.filter(
+      (it) => Number(it.quantity) <= Number(it.min_level) && Number(it.min_level) > 0
+    ).length;
   }, [items]);
+
+  const totalItems = items.length;
+
+  const connBadgeStyle =
+    connStatus === "ok"
+      ? { ...styles.badge, ...styles.badgeOk }
+      : connStatus === "error"
+        ? { ...styles.badge, ...styles.badgeErr }
+        : { ...styles.badge, ...styles.badgeChecking };
+
+  const connLabel =
+    connStatus === "ok"
+      ? "DB: OK"
+      : connStatus === "error"
+        ? "DB: ERROR"
+        : "DB: CHECKING";
 
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.h1}>RPBDD SUPPLIES INVENTORY SYSTEM</h1>
-          <div style={styles.subtle}>
-            Manual input of supplies. Stock-out automatically subtracts quantity.
-            {lowCount > 0 ? ` • Low stock alerts: ${lowCount}` : ""}
+      <div style={styles.shell}>
+        <motion.div
+          style={styles.hero}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+        >
+          <div style={styles.heroGlow} />
+
+          <h1 style={styles.heroTitle}>RPBDD SUPPLIES</h1>
+
+          <div style={styles.heroMetaRow}>
+            <span style={connBadgeStyle} title={connError || "Supabase connection status"}>
+              <Database size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+              {connLabel}
+            </span>
+
+            <span style={styles.statsPill}>
+              <Package2 size={14} />
+              Items: {totalItems}
+            </span>
+
+            <span style={styles.statsPill}>
+              <AlertTriangle size={14} />
+              Low stock: {lowCount}
+            </span>
+
+            <span style={styles.statsPill}>
+              <Archive size={14} />
+              Bin: {deletedItems.length}
+            </span>
+          </div>
+        </motion.div>
+
+        <div style={styles.header}>
+          <div style={styles.headerLeft}>
+            <div style={styles.headerTopRow}>
+              <h1 style={styles.h1}>RPBDD SUPPLIES INVENTORY SYSTEM</h1>
+            </div>
+
+            <div style={styles.subtle}>
+              Manual input of supplies. Stock-out automatically subtracts quantity.
+              {lowCount > 0 ? ` • Low stock alerts: ${lowCount}` : ""}
+            </div>
+          </div>
+
+          <div style={styles.buttonRow}>
+            <FancyButton
+              style={styles.btnWarning}
+              onClick={clearAll}
+              title="Move all data to recycle bin"
+              icon={<Archive size={16} />}
+            >
+              Recycle All
+            </FancyButton>
           </div>
         </div>
 
-        <div style={styles.buttonRow}>
-          <button style={styles.btn} onClick={clearAll} title="Danger: clears all data">
-            Clear All
-          </button>
-        </div>
-      </div>
+        {message?.type === "error" && <div style={styles.error}>{message.text}</div>}
+        {message?.type === "ok" && <div style={styles.ok}>{message.text}</div>}
 
-      {message?.type === "error" && <div style={styles.error}>{message.text}</div>}
-      {message?.type === "ok" && <div style={styles.ok}>{message.text}</div>}
+        <div style={styles.grid}>
+          <motion.div
+            style={styles.card}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.05 }}
+          >
+            <h2 style={styles.cardTitle}>
+              <Plus size={18} />
+              Add Supply
+            </h2>
 
-      <div style={styles.grid}>
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Add Supply (Stock Item)</h2>
-
-          <form onSubmit={addItem}>
-            <div style={styles.field}>
-              <div style={styles.label}>Item name (e.g., Bond Paper)</div>
-              <input
-                style={styles.input}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Bond Paper"
-              />
-            </div>
-
-            {/* SWAPPED: Initial quantity first, Unit second */}
-            <div style={styles.row}>
+            <form onSubmit={addItem}>
               <div style={styles.field}>
-                <div style={styles.label}>Initial quantity</div>
+                <div style={styles.label}>Item name</div>
                 <input
                   style={styles.input}
-                  value={newQty}
-                  onChange={(e) => setNewQty(e.target.value)}
-                  inputMode="decimal"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Bond Paper"
+                />
+              </div>
+
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <div style={styles.label}>Initial quantity</div>
+                  <input
+                    style={styles.input}
+                    value={newQty}
+                    onChange={(e) => setNewQty(digitsOnly(e.target.value))}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div style={styles.field}>
+                  <div style={styles.label}>Unit</div>
+                  <select
+                    style={styles.select}
+                    value={newUnit}
+                    onChange={(e) => setNewUnit(e.target.value)}
+                  >
+                    {UNIT_OPTIONS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit === "others" ? "Others" : unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {newUnit === "others" && (
+                <div style={styles.field}>
+                  <div style={styles.label}>Specify unit</div>
+                  <input
+                    style={styles.input}
+                    value={customUnit}
+                    onChange={(e) => setCustomUnit(e.target.value)}
+                    placeholder="e.g., tray"
+                  />
+                </div>
+              )}
+
+              <div style={styles.field}>
+                <div style={styles.label}>Low stock threshold</div>
+                <input
+                  style={styles.input}
+                  value={newMin}
+                  onChange={(e) => setNewMin(digitsOnly(e.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="0"
                 />
               </div>
 
-              <div style={styles.field}>
-                <div style={styles.label}>Unit (e.g., ream, pcs, box)</div>
-                <input
-                  style={styles.input}
-                  value={newUnit}
-                  onChange={(e) => setNewUnit(e.target.value)}
-                  placeholder="ream"
-                />
+              <div style={styles.buttonRow}>
+                <FancyButton
+                  style={styles.btnPrimary}
+                  type="submit"
+                  icon={<Plus size={16} />}
+                >
+                  Add Item
+                </FancyButton>
               </div>
-            </div>
+            </form>
+          </motion.div>
 
-            <div style={styles.field}>
-              <div style={styles.label}>Low stock threshold (optional)</div>
-              <input
-                style={styles.input}
-                value={newMin}
-                onChange={(e) => setNewMin(e.target.value)}
-                inputMode="decimal"
-                placeholder="0"
-              />
-            </div>
+          <motion.div
+            ref={txnSectionRef}
+            style={styles.card}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.1 }}
+          >
+            <h2 style={styles.cardTitle}>
+              <ArrowDownUp size={18} />
+              Release / Stock In
+            </h2>
 
-            <div style={styles.buttonRow}>
-              <button style={styles.btnPrimary} type="submit">
-                Add Item
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Release / Stock In (Auto +/-)</h2>
-
-          <form onSubmit={applyTxn}>
-            <div style={styles.field}>
-              <div style={styles.label}>Select item</div>
-              <select
-                style={styles.select}
-                value={selectedItemId}
-                onChange={(e) => setSelectedItemId(e.target.value)}
-              >
-                <option value="" disabled>
-                  -- choose item --
-                </option>
-                {items.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name} ({it.quantity} {it.unit})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={styles.row}>
+            <form onSubmit={applyTxn}>
               <div style={styles.field}>
-                <div style={styles.label}>Transaction</div>
+                <div style={styles.label}>Select item</div>
                 <select
                   style={styles.select}
-                  value={txnType}
-                  onChange={(e) => setTxnType(e.target.value)}
+                  value={selectedItemId}
+                  onChange={(e) => setSelectedItemId(e.target.value)}
                 >
-                  <option value="OUT">Stock Out (Release)</option>
-                  <option value="IN">Stock In (Add)</option>
+                  <option value="" disabled>
+                    -- choose item --
+                  </option>
+                  {items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name} ({it.quantity} {it.unit})
+                    </option>
+                  ))}
                 </select>
               </div>
 
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <div style={styles.label}>Transaction</div>
+                  <select
+                    style={styles.select}
+                    value={txnType}
+                    onChange={(e) => setTxnType(e.target.value)}
+                  >
+                    <option value="OUT">Stock Out (Release)</option>
+                    <option value="IN">Stock In (Add)</option>
+                  </select>
+                </div>
+
+                <div style={styles.field}>
+                  <div style={styles.label}>Quantity</div>
+                  <input
+                    style={styles.input}
+                    value={txnQty}
+                    onChange={(e) => setTxnQty(digitsOnly(e.target.value))}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="e.g., 50"
+                  />
+                </div>
+              </div>
+
               <div style={styles.field}>
-                <div style={styles.label}>Quantity</div>
+                <div style={styles.label}>Note</div>
                 <input
                   style={styles.input}
-                  value={txnQty}
-                  onChange={(e) => setTxnQty(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="e.g., 50"
+                  value={txnNote}
+                  onChange={(e) => setTxnNote(e.target.value)}
+                  placeholder='e.g., "Used for printing"'
                 />
               </div>
+
+              <div style={styles.buttonRow}>
+                <FancyButton
+                  style={styles.btnPrimary}
+                  type="submit"
+                  icon={<ArrowDownUp size={16} />}
+                >
+                  Save Transaction
+                </FancyButton>
+              </div>
+            </form>
+
+            <div style={styles.helperText}>
+              Example: If you added <b>100</b> then Stock Out <b>50</b>, remaining becomes <b>50</b>.
+            </div>
+          </motion.div>
+
+          <motion.div
+            style={{ ...styles.card, ...styles.cardFull }}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.15 }}
+          >
+            <h2 style={styles.cardTitle}>
+              <Package2 size={18} />
+              Items
+            </h2>
+
+            <div style={styles.row}>
+              <div style={styles.field}>
+                <div style={styles.label}>Search</div>
+                <div style={{ position: "relative" }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#64748b",
+                    }}
+                  />
+                  <input
+                    style={{ ...styles.input, paddingLeft: 40 }}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search item name..."
+                  />
+                </div>
+              </div>
+              <div />
             </div>
 
-            <div style={styles.field}>
-              <div style={styles.label}>Note (optional)</div>
-              <input
-                style={styles.input}
-                value={txnNote}
-                onChange={(e) => setTxnNote(e.target.value)}
-                placeholder='e.g., "Used for printing"'
-              />
-            </div>
-
-            <div style={styles.buttonRow}>
-              <button style={styles.btnPrimary} type="submit">
-                Save Transaction
-              </button>
-            </div>
-          </form>
-
-          <div style={{ ...styles.subtle, marginTop: 10 }}>
-            Example: If you added <b>100 reams</b> then do <b>Stock Out 50</b>, the remaining becomes{" "}
-            <b>50 reams</b>.
-          </div>
-        </div>
-
-        <div style={{ ...styles.card, gridColumn: "1 / -1" }}>
-          <h2 style={styles.cardTitle}>Items</h2>
-
-          <div style={styles.row}>
-            <div style={styles.field}>
-              <div style={styles.label}>Search</div>
-              <input
-                style={styles.input}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search item name..."
-              />
-            </div>
-            <div />
-          </div>
-
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Name</th>
-                  <th style={styles.th}>Qty</th>
-                  <th style={styles.th}>Unit</th>
-                  <th style={styles.th}>Low stock</th>
-                  <th style={styles.th}>Updated</th>
-                  <th style={styles.th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.length === 0 ? (
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
                   <tr>
-                    <td style={styles.td} colSpan={6}>
-                      No items found.
-                    </td>
+                    <th style={styles.th}>Name</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}>Unit</th>
+                    <th style={styles.th}>Low stock</th>
+                    <th style={styles.th}>Updated</th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
-                ) : (
-                  filteredItems.map((it) => {
-                    const isLow = it.minLevel > 0 && it.quantity <= it.minLevel;
-                    return (
+                </thead>
+                <tbody>
+                  {filteredItems.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan={6}>
+                        No items found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredItems.map((it) => {
+                      const isLow =
+                        Number(it.min_level) > 0 &&
+                        Number(it.quantity) <= Number(it.min_level);
+
+                      return (
+                        <tr key={it.id}>
+                          <td style={styles.td}>{it.name}</td>
+                          <td style={styles.td}>
+                            <b>{it.quantity}</b>
+                          </td>
+                          <td style={styles.td}>{it.unit}</td>
+                          <td style={styles.td}>
+                            {Number(it.min_level) > 0 ? (
+                              <span style={isLow ? styles.badgeLow : styles.badge}>
+                                {isLow ? "LOW" : "OK"} (≤ {it.min_level})
+                              </span>
+                            ) : (
+                              <span style={styles.badge}>Not set</span>
+                            )}
+                          </td>
+                          <td style={styles.td}>{formatDate(it.updated_at)}</td>
+                          <td style={styles.td}>
+                            <div style={styles.buttonRow}>
+                              <FancyButton
+                                type="button"
+                                style={styles.btn}
+                                onClick={() => handleSelectItem(it.id)}
+                                icon={<Activity size={15} />}
+                              >
+                                Select
+                              </FancyButton>
+
+                              <FancyButton
+                                type="button"
+                                style={styles.btnWarning}
+                                onClick={() => deleteItem(it.id)}
+                                icon={<Archive size={15} />}
+                              >
+                                Recycle
+                              </FancyButton>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+
+          <motion.div
+            style={{ ...styles.card, ...styles.cardFull }}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.18 }}
+          >
+            <h2 style={styles.cardTitle}>
+              <Archive size={18} />
+              Recycle Bin
+            </h2>
+
+            <div style={styles.row}>
+              <div style={styles.field}>
+                <div style={styles.label}>Search deleted items</div>
+                <div style={{ position: "relative" }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#64748b",
+                    }}
+                  />
+                  <input
+                    style={{ ...styles.input, paddingLeft: 40 }}
+                    value={binSearch}
+                    onChange={(e) => setBinSearch(e.target.value)}
+                    placeholder="Search deleted item name..."
+                  />
+                </div>
+              </div>
+              <div />
+            </div>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Name</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}>Unit</th>
+                    <th style={styles.th}>Deleted</th>
+                    <th style={styles.th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDeletedItems.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan={5}>
+                        Recycle Bin is empty.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDeletedItems.map((it) => (
                       <tr key={it.id}>
                         <td style={styles.td}>{it.name}</td>
-                        <td style={styles.td}>
-                          <b>{it.quantity}</b>
-                        </td>
+                        <td style={styles.td}>{it.quantity}</td>
                         <td style={styles.td}>{it.unit}</td>
-                        <td style={styles.td}>
-                          {it.minLevel > 0 ? (
-                            <span style={isLow ? styles.badgeLow : styles.badge}>
-                              {isLow ? "LOW" : "OK"} (≤ {it.minLevel})
-                            </span>
-                          ) : (
-                            <span style={styles.badge}>Not set</span>
-                          )}
-                        </td>
-                        <td style={styles.td}>{formatDate(it.updatedAt)}</td>
+                        <td style={styles.td}>{formatDate(it.deleted_at)}</td>
                         <td style={styles.td}>
                           <div style={styles.buttonRow}>
-                            <button
-                              style={styles.btn}
-                              onClick={() => setSelectedItemId(it.id)}
-                              title="Select item for transaction"
+                            <FancyButton
+                              type="button"
+                              style={styles.btnPrimary}
+                              onClick={() => restoreItem(it.id)}
+                              icon={<RotateCcw size={15} />}
                             >
-                              Select
-                            </button>
-                            <button
+                              Restore
+                            </FancyButton>
+
+                            <FancyButton
+                              type="button"
                               style={styles.btnDanger}
-                              onClick={() => deleteItem(it.id)}
-                              title="Delete item"
+                              onClick={() => deleteForever(it.id)}
+                              icon={<Trash2 size={15} />}
                             >
-                              Delete
-                            </button>
+                              Delete Forever
+                            </FancyButton>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
 
-        <div style={{ ...styles.card, gridColumn: "1 / -1" }}>
-          <h2 style={styles.cardTitle}>Transaction History</h2>
+          <motion.div
+            style={{ ...styles.card, ...styles.cardFull }}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.2 }}
+          >
+            <h2 style={styles.cardTitle}>
+              <Activity size={18} />
+              Transaction History
+            </h2>
 
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Date</th>
-                  <th style={styles.th}>Type</th>
-                  <th style={styles.th}>Item</th>
-                  <th style={styles.th}>Qty</th>
-                  <th style={styles.th}>Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {txns.length === 0 ? (
+            <div style={styles.row}>
+              <div style={styles.field}>
+                <div style={styles.label}>Search</div>
+                <div style={{ position: "relative" }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#64748b",
+                    }}
+                  />
+                  <input
+                    style={{ ...styles.input, paddingLeft: 40 }}
+                    value={txnSearch}
+                    onChange={(e) => setTxnSearch(e.target.value)}
+                    placeholder="Search item, note, type, qty, or date..."
+                  />
+                </div>
+              </div>
+              <div />
+            </div>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
                   <tr>
-                    <td style={styles.td} colSpan={5}>
-                      No transactions yet.
-                    </td>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Item</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}>Note</th>
                   </tr>
-                ) : (
-                  txns.map((t) => {
-                    const it = itemMap.get(t.itemId);
-                    return (
-                      <tr key={t.id}>
-                        <td style={styles.td}>{formatDate(t.at)}</td>
-                        <td style={styles.td}>
-                          <span style={t.type === "OUT" ? styles.badgeLow : styles.badge}>
-                            {t.type === "OUT" ? "OUT" : "IN"}
-                          </span>
-                        </td>
-                        <td style={styles.td}>{it ? it.name : "(deleted item)"}</td>
-                        <td style={styles.td}>
-                          {t.qty} {it?.unit ?? ""}
-                        </td>
-                        <td style={styles.td}>{t.note || "-"}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredTxns.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan={5}>
+                        No transactions found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTxns.map((t) => {
+                      const it = itemMap.get(t.item_id);
+                      return (
+                        <tr key={t.id}>
+                          <td style={styles.td}>{formatDate(t.at)}</td>
+                          <td style={styles.td}>
+                            <span style={t.type === "OUT" ? styles.badgeLow : styles.badge}>
+                              {t.type === "OUT" ? "OUT" : "IN"}
+                            </span>
+                          </td>
+                          <td style={styles.td}>{it ? it.name : "(deleted item)"}</td>
+                          <td style={styles.td}>
+                            {t.qty} {it?.unit ?? ""}
+                          </td>
+                          <td style={styles.td}>{t.note || "-"}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          <div style={styles.footer}>
-            Data is saved in your browser (localStorage). If you want multi-user or database version (Firebase / MySQL),
-            tell me and I’ll upgrade it.
-          </div>
+            <div style={styles.footer}>Data is saved in Supabase (Postgres).</div>
+          </motion.div>
         </div>
       </div>
     </div>
