@@ -13,7 +13,6 @@ import {
   Archive,
   LogOut,
   ShieldCheck,
-  Eye,
 } from "lucide-react";
 import { supabase } from "./lib/supabaseClient";
 
@@ -154,6 +153,23 @@ const styles = {
     letterSpacing: "0.04em",
     textTransform: "uppercase",
     backdropFilter: "blur(8px)",
+  },
+
+  statsPillButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 14px",
+    borderRadius: 999,
+    background: "rgba(7, 28, 14, 0.26)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    backdropFilter: "blur(8px)",
+    cursor: "pointer",
   },
 
   header: {
@@ -438,6 +454,8 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const msgTimerRef = useRef(null);
   const txnSectionRef = useRef(null);
+  const itemsSectionRef = useRef(null);
+  const binSectionRef = useRef(null);
 
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState("ream");
@@ -466,7 +484,9 @@ export default function App() {
 
   const [authLoading, setAuthLoading] = useState(true);
 
-  const isAdmin = role === "admin" || (profile?.email || session?.user?.email) === "adminrpbdd@gmail.com";
+  const isAdmin =
+    role === "admin" ||
+    (profile?.email || session?.user?.email) === "adminrpbdd@gmail.com";
   const isGuest = role === "guest";
 
   function showMessage(type, text) {
@@ -479,6 +499,13 @@ export default function App() {
     if (!isAdmin) return;
     setSelectedItemId(itemId);
     txnSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function scrollToSection(ref) {
+    ref.current?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
@@ -648,24 +675,25 @@ export default function App() {
     setTxns(txnsData ?? []);
 
     const nextSelected =
-      preferSelectedId && (itemsData ?? []).some((x) => x.id === preferSelectedId)
+      preferSelectedId &&
+      (itemsData ?? []).some((x) => x.id === preferSelectedId)
         ? preferSelectedId
         : itemsData?.[0]?.id ?? "";
 
     setSelectedItemId(isAdmin ? nextSelected : "");
   }
 
-useEffect(() => {
-  if (!session) {
-    setItems([]);
-    setDeletedItems([]);
-    setTxns([]);
-    setSelectedItemId("");
-    return;
-  }
+  useEffect(() => {
+    if (!session) {
+      setItems([]);
+      setDeletedItems([]);
+      setTxns([]);
+      setSelectedItemId("");
+      return;
+    }
 
-  refreshData();
-}, [session, role]);
+    refreshData();
+  }, [session, role]);
 
   async function addItem(e) {
     e.preventDefault();
@@ -826,7 +854,9 @@ useEffect(() => {
     const item = deletedItems.find((it) => it.id === itemId);
     if (!item) return;
 
-    const yes = window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`);
+    const yes = window.confirm(
+      `Delete "${item.name}" permanently? This cannot be undone.`
+    );
     if (!yes) return;
 
     const { error: txErr } = await supabase.from("txns").delete().eq("item_id", itemId);
@@ -996,7 +1026,11 @@ useEffect(() => {
               </div>
 
               <div style={styles.buttonRow}>
-                <FancyButton type="submit" style={styles.btnPrimary} icon={<ShieldCheck size={16} />}>
+                <FancyButton
+                  type="submit"
+                  style={styles.btnPrimary}
+                  icon={<ShieldCheck size={16} />}
+                >
                   Login
                 </FancyButton>
               </div>
@@ -1026,10 +1060,15 @@ useEffect(() => {
               {connLabel}
             </span>
 
-            <span style={styles.statsPill}>
+            <button
+              type="button"
+              style={styles.statsPillButton}
+              onClick={() => scrollToSection(itemsSectionRef)}
+              title="Go to Items section"
+            >
               <Package2 size={14} />
               Items: {totalItems}
-            </span>
+            </button>
 
             <span style={styles.statsPill}>
               <AlertTriangle size={14} />
@@ -1037,16 +1076,16 @@ useEffect(() => {
             </span>
 
             {isAdmin && (
-              <span style={styles.statsPill}>
+              <button
+                type="button"
+                style={styles.statsPillButton}
+                onClick={() => scrollToSection(binSectionRef)}
+                title="Go to Recycle Bin section"
+              >
                 <Archive size={14} />
                 Bin: {deletedItems.length}
-              </span>
+              </button>
             )}
-
-            <span style={styles.statsPill}>
-              {isAdmin ? <ShieldCheck size={14} /> : <Eye size={14} />}
-              Role: {role || "unknown"}
-            </span>
           </div>
         </motion.div>
 
@@ -1267,6 +1306,7 @@ useEffect(() => {
           )}
 
           <motion.div
+            ref={itemsSectionRef}
             style={{ ...styles.card, ...styles.cardFull }}
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1382,6 +1422,7 @@ useEffect(() => {
 
           {isAdmin && (
             <motion.div
+              ref={binSectionRef}
               style={{ ...styles.card, ...styles.cardFull }}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
