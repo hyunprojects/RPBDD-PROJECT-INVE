@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowDownUp,
+  ArrowUp,
   Database,
   Package2,
   Plus,
@@ -444,6 +445,24 @@ const styles = {
     marginTop: 10,
     lineHeight: 1.6,
   },
+
+  scrollTopButton: {
+    position: "fixed",
+    right: 20,
+    bottom: 20,
+    width: 52,
+    height: 52,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(180deg, #dff7cf 0%, #8fcd67 100%)",
+    color: "#12361c",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
+    zIndex: 999,
+  },
 };
 
 export default function App() {
@@ -483,6 +502,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState("");
 
   const [authLoading, setAuthLoading] = useState(true);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const isAdmin =
     role === "admin" ||
@@ -511,6 +531,13 @@ export default function App() {
     });
   }
 
+  function scrollToTop() {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
   useEffect(() => {
     async function loadSession() {
       setAuthLoading(true);
@@ -536,6 +563,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    function handleScroll() {
+      setShowScrollTop(window.scrollY > 300);
+    }
+
+    window.addEventListener("scroll", handleScroll);
+    handleScroll();
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
     async function loadProfile() {
       if (!session?.user) {
         setProfile(null);
@@ -547,18 +585,27 @@ export default function App() {
         .from("profiles")
         .select("id, email, role")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Profile load error:", error);
-        setProfile(null);
+        setProfile({
+          id: session.user.id,
+          email: session.user.email,
+          role: null,
+        });
         setRole(null);
-        showMessage("error", "Could not load user profile.");
         return;
       }
 
-      setProfile(data);
-      setRole(data.role);
+      setProfile(
+        data ?? {
+          id: session.user.id,
+          email: session.user.email,
+          role: null,
+        }
+      );
+      setRole(data?.role ?? null);
     }
 
     loadProfile();
@@ -859,7 +906,10 @@ export default function App() {
     );
     if (!yes) return;
 
-    const { error: txErr } = await supabase.from("txns").delete().eq("item_id", itemId);
+    const { error: txErr } = await supabase
+      .from("txns")
+      .delete()
+      .eq("item_id", itemId);
     if (txErr) return showMessage("error", txErr.message);
 
     const { error: itErr } = await supabase.from("items").delete().eq("id", itemId);
@@ -1094,7 +1144,8 @@ export default function App() {
             <div style={styles.headerTopRow}>
               <h1 style={styles.h1}>RPBDD SUPPLIES INVENTORY SYSTEM</h1>
               <span style={styles.badge}>
-                {profile?.email || session.user.email} • {isAdmin ? "admin" : isGuest ? "guest" : "user"}
+                {profile?.email || session.user.email}
+                {isAdmin ? " • admin" : isGuest ? " • guest" : ""}
               </span>
             </div>
 
@@ -1594,6 +1645,23 @@ export default function App() {
             <div style={styles.footer}>Data is saved in Supabase (Postgres).</div>
           </motion.div>
         </div>
+
+        {showScrollTop && (
+          <motion.button
+            type="button"
+            onClick={scrollToTop}
+            style={styles.scrollTopButton}
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            whileHover={{ y: -2, scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            title="Scroll to top"
+          >
+            <ArrowUp size={22} />
+          </motion.button>
+        )}
       </div>
     </div>
   );
