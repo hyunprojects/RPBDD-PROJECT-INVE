@@ -1342,72 +1342,91 @@ useEffect(() => {
     refreshData();
   }, [session, role]);
 
-  async function addItem(e) {
-    e.preventDefault();
+async function addItem(e) {
+  e.preventDefault();
 
-    if (!isAdmin) return showMessage("error", "Only admin can add items.");
+  if (!isAdmin) return showMessage("error", "Only admin can add items.");
 
-    const name = normalizeName(newName);
-    const unit =
-      newUnit === "others"
-        ? normalizeName(customUnit || "pcs")
-        : newUnit.trim() || "pcs";
-    const qty = toNumber(newQty);
-    const minLevel = toNumber(newMin);
+  const name = normalizeName(newName);
+  const unit =
+    newUnit === "others"
+      ? normalizeName(customUnit || "pcs")
+      : newUnit.trim() || "pcs";
+  const qty = toNumber(newQty);
+  const minLevel = toNumber(newMin);
 
-    if (!name) return showMessage("error", "Item name is required.");
-    if (newUnit === "others" && !normalizeName(customUnit)) {
-      return showMessage("error", "Please specify the unit.");
-    }
-    if (!Number.isFinite(qty) || qty < 0) {
-      return showMessage("error", "Initial quantity must be 0 or more.");
-    }
-    if (!Number.isFinite(minLevel) || minLevel < 0) {
-      return showMessage("error", "Min level must be 0 or more.");
-    }
-
-    const { data: inserted, error } = await supabase
-      .from("items")
-      .insert({
-        name,
-        unit,
-        quantity: clampNonNegative(qty),
-        min_level: clampNonNegative(minLevel),
-        deleted_at: null,
-      })
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("Insert error:", error);
-      return showMessage("error", error.message);
-    }
-
-    if (qty > 0) {
-      const { error: txnErr } = await supabase.from("txns").insert({
-        type: "IN",
-        item_id: inserted.id,
-        qty,
-        note: "Initial stock",
-        deleted_at: null,
-      });
-
-      if (txnErr) {
-        console.error("Txn insert error:", txnErr);
-        return showMessage("error", txnErr.message);
-      }
-    }
-
-    setNewName("");
-    setNewQty("0");
-    setNewMin("0");
-    setNewUnit("ream");
-    setCustomUnit("");
-    setShowSuggestions(false);
-
-    await refreshData(inserted.id);
-    showMessage("ok", `Added "${name}".`);
+  if (!name) return showMessage("error", "Item name is required.");
+  if (newUnit === "others" && !normalizeName(customUnit)) {
+    return showMessage("error", "Please specify the unit.");
   }
+  if (!Number.isFinite(qty) || qty < 0) {
+    return showMessage("error", "Initial quantity must be 0 or more.");
+  }
+  if (!Number.isFinite(minLevel) || minLevel < 0) {
+    return showMessage("error", "Min level must be 0 or more.");
+  }
+
+  const { data: existingItem, error: findError } = await supabase
+    .from("items")
+    .select("*")
+    .eq("name", name)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (findError) {
+    console.error("Find item error:", findError);
+    return showMessage("error", findError.message);
+  }
+
+  if (existingItem) {
+    return showMessage(
+      "error",
+      `"${name}" already exists. Use Stock In instead of Add Supply.`
+    );
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("items")
+    .insert({
+      name,
+      unit,
+      quantity: clampNonNegative(qty),
+      min_level: clampNonNegative(minLevel),
+      deleted_at: null,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("Insert error:", error);
+    return showMessage("error", error.message);
+  }
+
+  if (qty > 0) {
+    const { error: txnErr } = await supabase.from("txns").insert({
+      type: "IN",
+      item_id: inserted.id,
+      qty,
+      note: "Initial stock",
+      deleted_at: null,
+    });
+
+    if (txnErr) {
+      console.error("Txn insert error:", txnErr);
+      return showMessage("error", txnErr.message);
+    }
+  }
+
+  setNewName("");
+  setNewQty("0");
+  setNewMin("0");
+  setNewUnit("ream");
+  setCustomUnit("");
+  setShowSuggestions(false);
+
+  await refreshData(inserted.id);
+  showMessage("ok", `Added "${name}".`);
+}
 
   async function applyTxn(e) {
     e.preventDefault();
