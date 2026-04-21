@@ -733,17 +733,42 @@ function getStyles(theme) {
     },
 
     loginLeftText: {
-      fontSize: "clamp(48px, 7vw, 92px)",
+      fontSize: "clamp(42px, 6vw, 82px)",
       fontWeight: 800,
-      lineHeight: 0.95,
+      lineHeight: 0.94,
       color: "#ffffff",
       letterSpacing: "-0.05em",
-      maxWidth: 520,
-      marginBottom: 40,
+      maxWidth: 500,
+      marginBottom: 20,
+      textShadow: "0 8px 20px rgba(0,0,0,0.18)",
+    },
+
+    loginFooterText: {
+      marginTop: 18,
+      fontSize: 14,
+      color: "rgba(255,255,255,0.72)",
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
     },
 
     loginAccent: {
       color: "#dff7cf",
+    },
+
+    loginCenterImageWrap: {
+      position: "absolute",
+      left: "42%",
+      top: "56%",
+      transform: "translate(-50%, -50%)",
+      zIndex: 1,
+      pointerEvents: "none",
+    },
+
+    loginCenterImage: {
+      width: 220,
+      objectFit: "contain",
+      filter: "drop-shadow(0 18px 30px rgba(0,0,0,0.22))",
+      opacity: 0.95,
     },
 
     loginDivider: {
@@ -762,12 +787,12 @@ function getStyles(theme) {
     loginCardModern: {
       width: "100%",
       maxWidth: 520,
-      background: "rgba(8, 30, 15, 0.24)",
-      border: "1px solid rgba(255,255,255,0.12)",
-      borderRadius: 24,
-      padding: 28,
-      backdropFilter: "blur(14px)",
-      boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+      background: "rgba(8, 30, 15, 0.28)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: 28,
+      padding: 30,
+      backdropFilter: "blur(16px)",
+      boxShadow: "0 25px 60px rgba(0,0,0,0.25)",
     },
 
     loginTitleModern: {
@@ -775,6 +800,13 @@ function getStyles(theme) {
       fontWeight: 700,
       color: "#ffffff",
       margin: "0 0 24px 0",
+    },
+
+    loginSubtitle: {
+      margin: "0 0 20px 0",
+      color: "rgba(255,255,255,0.78)",
+      fontSize: 14,
+      lineHeight: 1.5,
     },
 
     loginInputModern: {
@@ -801,6 +833,18 @@ function getStyles(theme) {
       fontWeight: 700,
       cursor: "pointer",
       boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
+    },
+
+    passwordToggle: {
+      position: "absolute",
+      right: 14,
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "transparent",
+      border: "none",
+      color: "#17612b",
+      fontWeight: 700,
+      cursor: "pointer",
     },
   };
 }
@@ -843,6 +887,7 @@ export default function App() {
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [authLoading, setAuthLoading] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -1252,10 +1297,7 @@ export default function App() {
         }
 
         await refreshData();
-        showMessage(
-          "ok",
-          `Imported ${successCount} items successfully. Failed: ${errorCount}`
-        );
+        showMessage("ok", `Imported ${successCount} items successfully. Failed: ${errorCount}`);
       } catch (error) {
         console.error("Import error:", error);
         showMessage("error", `Import failed: ${error.message}`);
@@ -1284,15 +1326,11 @@ export default function App() {
     switch (activeFilter) {
       case "low-stock":
         filtered = filtered.filter(
-          (it) =>
-            Number(it.quantity) <= Number(it.min_level) &&
-            Number(it.min_level) > 0
+          (it) => Number(it.quantity) <= Number(it.min_level) && Number(it.min_level) > 0
         );
         break;
       case "in-stock":
-        filtered = filtered.filter(
-          (it) => Number(it.quantity) > Number(it.min_level)
-        );
+        filtered = filtered.filter((it) => Number(it.quantity) > Number(it.min_level));
         break;
       case "critical":
         filtered = filtered.filter((it) => Number(it.quantity) === 0);
@@ -1919,11 +1957,25 @@ export default function App() {
         <div style={{ ...styles.loginLeft, zIndex: 1 }}>
           <img src="/dar-logo.jpeg" alt="DAR Logo" style={styles.loginLogo} />
 
-          <div style={styles.loginLeftText}>
-            <div>Make your</div>
-            <div>Supplies</div>
-            <div>Organized</div>
+          <div>
+            <div style={styles.loginLeftText}>
+              <div>Make your</div>
+              <div>Supplies</div>
+              <div>Organized</div>
+            </div>
+
+            <div style={styles.loginFooterText}>
+              Inventory Management System
+            </div>
           </div>
+        </div>
+
+        <div style={styles.loginCenterImageWrap}>
+          <img
+            src="/supply-image.png"
+            alt="Supply illustration"
+            style={styles.loginCenterImage}
+          />
         </div>
 
         <div style={{ ...styles.loginDivider, position: "relative", zIndex: 1 }} />
@@ -1931,6 +1983,9 @@ export default function App() {
         <div style={{ ...styles.loginRight, zIndex: 1 }}>
           <div style={styles.loginCardModern}>
             <h2 style={styles.loginTitleModern}>Log in to RPBDD Supplies</h2>
+            <p style={styles.loginSubtitle}>
+              Department of Agrarian Reform - Northern Mindanao
+            </p>
 
             {message?.type === "error" && <div style={styles.error}>{message.text}</div>}
             {message?.type === "ok" && <div style={styles.ok}>{message.text}</div>}
@@ -1947,18 +2002,32 @@ export default function App() {
               </div>
 
               <div style={styles.field}>
-                <input
-                  style={styles.loginInputModern}
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="Password"
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    style={styles.loginInputModern}
+                    type={showPassword ? "text" : "password"}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={styles.passwordToggle}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
 
-              <button type="submit" style={styles.loginButtonModern}>
+              <motion.button
+                type="submit"
+                style={styles.loginButtonModern}
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.98 }}
+              >
                 Log in
-              </button>
+              </motion.button>
             </form>
           </div>
         </div>
