@@ -23,6 +23,8 @@ import {
   RefreshCw,
   Sun,
   Moon,
+  Edit3,
+  Check,
 } from "lucide-react";
 import { supabase } from "./lib/supabaseClient";
 import * as XLSX from "xlsx";
@@ -846,6 +848,20 @@ function getStyles(theme) {
       fontWeight: 700,
       cursor: "pointer",
     },
+
+    editNoteInput: {
+      padding: "6px 10px",
+      borderRadius: 12,
+      border: isDark
+        ? "1px solid rgba(255,255,255,0.12)"
+        : "1px solid rgba(0,0,0,0.12)",
+      outline: "none",
+      background: isDark ? "rgba(255,255,255,0.95)" : "#ffffff",
+      color: "#111827",
+      fontSize: 13,
+      width: "100%",
+      boxSizing: "border-box",
+    },
   };
 }
 
@@ -899,6 +915,10 @@ export default function App() {
   const [editingItemId, setEditingItemId] = useState("");
   const [editUnit, setEditUnit] = useState("pcs");
   const [editCustomUnit, setEditCustomUnit] = useState("");
+
+  // New state for editing transaction notes
+  const [editingTxnId, setEditingTxnId] = useState(null);
+  const [editTxnNote, setEditTxnNote] = useState("");
 
   const isAdmin =
     role === "admin" ||
@@ -1002,6 +1022,40 @@ export default function App() {
     setEditingItemId("");
     setEditUnit("pcs");
     setEditCustomUnit("");
+  }
+
+  // Start editing a transaction note
+  function startEditTxnNote(txn) {
+    if (!isAdmin) return showMessage("error", "Only admin can edit notes.");
+    setEditingTxnId(txn.id);
+    setEditTxnNote(txn.note || "");
+  }
+
+  // Cancel editing a transaction note
+  function cancelEditTxnNote() {
+    setEditingTxnId(null);
+    setEditTxnNote("");
+  }
+
+  // Save edited transaction note
+  async function saveTxnNote(txnId) {
+    if (!isAdmin) return showMessage("error", "Only admin can edit notes.");
+
+    const trimmedNote = editTxnNote.trim();
+    
+    const { error } = await supabase
+      .from("txns")
+      .update({ note: trimmedNote || null })
+      .eq("id", txnId);
+
+    if (error) {
+      console.error("Update note error:", error);
+      return showMessage("error", error.message);
+    }
+
+    await refreshData();
+    cancelEditTxnNote();
+    showMessage("ok", "Note updated successfully.");
   }
 
   async function saveItemUnit(itemId) {
@@ -1488,6 +1542,8 @@ export default function App() {
     setLoginEmail("");
     setLoginPassword("");
     setEditingItemId("");
+    setEditingTxnId(null);
+    setEditTxnNote("");
     showMessage("ok", "Logged out.");
   }
 
@@ -1498,6 +1554,7 @@ export default function App() {
       setTxns([]);
       setSelectedItemId("");
       setEditingItemId("");
+      setEditingTxnId(null);
       return;
     }
 
@@ -2800,12 +2857,13 @@ export default function App() {
                     <th style={styles.th}>Item</th>
                     <th style={styles.th}>Qty</th>
                     <th style={styles.th}>Note</th>
+                    {isAdmin && <th style={styles.th}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredTxns.length === 0 ? (
                     <tr>
-                      <td style={styles.td} colSpan={5}>
+                      <td style={styles.td} colSpan={isAdmin ? 6 : 5}>
                         No transactions found.
                       </td>
                     </tr>
@@ -2824,7 +2882,62 @@ export default function App() {
                           <td style={styles.td}>
                             {t.qty} {it?.unit ?? ""}
                           </td>
-                          <td style={styles.td}>{t.note || "-"}</td>
+                          <td style={styles.td}>
+                            {editingTxnId === t.id ? (
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <input
+                                  style={styles.editNoteInput}
+                                  value={editTxnNote}
+                                  onChange={(e) => setEditTxnNote(e.target.value)}
+                                  placeholder="Edit note..."
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      saveTxnNote(t.id);
+                                    } else if (e.key === "Escape") {
+                                      cancelEditTxnNote();
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <FancyButton
+                                  type="button"
+                                  style={styles.btnSuccess}
+                                  onClick={() => saveTxnNote(t.id)}
+                                  icon={<Check size={14} />}
+                                >
+                                  Save
+                                </FancyButton>
+                                <FancyButton
+                                  type="button"
+                                  style={styles.btn}
+                                  onClick={cancelEditTxnNote}
+                                  icon={<X size={14} />}
+                                >
+                                  Cancel
+                                </FancyButton>
+                              </div>
+                            ) : (
+                              t.note || "-"
+                            )}
+                          </td>
+                          {isAdmin && (
+                            <td style={styles.td}>
+                              {editingTxnId !== t.id && (
+                                <FancyButton
+                                  type="button"
+                                  style={{
+                                    ...styles.btnPrimary,
+                                    padding: "6px 12px",
+                                    fontSize: 12,
+                                  }}
+                                  onClick={() => startEditTxnNote(t)}
+                                  icon={<Edit3 size={14} />}
+                                >
+                                  Edit Note
+                                </FancyButton>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })
